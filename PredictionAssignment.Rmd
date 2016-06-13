@@ -1,0 +1,127 @@
+---
+title: "PredictionAssignment"
+author: "VRS"
+---
+
+#Synopsis
+
+##Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+##Data
+
+The training and test data can be obtained from these locations:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The original source of the data is:
+http://groupware.les.inf.puc-rio.br/har.
+
+#Read the Data
+
+Let us first load the datasets.
+
+```{r, warning=FALSE}
+#Load the packages
+library(rpart)
+library(randomForest)
+library(caret)
+
+#Download data
+if(!file.exists("Data")) {
+  dir.create("Data")
+}
+if(!file.exists("./Data/pml-training.csv")) {
+  trainingUrl<-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+  download.file(trainingUrl, destfile = "./Data/pml-training.csv")
+}
+if(!file.exists("./Data/pml-testing.csv")) {
+  testingUrl<-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+  download.file(testingUrl, destfile = "./Data/pml-testing.csv")
+}
+
+#Read data
+training<-read.csv("./Data/pml-training.csv")
+validate<-read.csv("./Data/pml-testing.csv")
+```
+
+#Data Preprocessing
+#Clean the dataset
+Let us remove entries that have "NA".
+
+```{r}
+training<-training[,(colSums(is.na(training))==0)]
+```
+Features unrelated to the problem at hand, such as X, user_name, raw_timestamp_part_1, etc. are removed.
+
+```{r}
+index <-  which(names(training) %in% c('X', 'user_name', 'raw_timestamp_part_1', 'raw_timestamp_part_2', 'cvtd_timestamp', 'new_window','num_window'))
+training <- training[, -index]
+```
+
+Some features have zero variance, which in turn implies that they will not provide any infomartion for the classification. Let us remove such features.
+
+```{r}
+trainNzv <- nearZeroVar(training, saveMetrics=TRUE)
+training <- training[,trainNzv$nzv==FALSE]
+```
+# Data Partitioning
+Let us partition the dataset into training and testing.
+
+```{r}
+inTrain <- createDataPartition(y=training$classe, p=0.6, list=FALSE)
+train <- training[inTrain,]
+test <- training[-inTrain,]
+```
+
+#Model Building
+
+Let us apply three models: Decision trees, generalized booseted regression and finally random forests.
+
+```{r, cache=TRUE, warning=FALSE, message=FALSE}
+#Decision trees
+modelDecisionTrees<-train(classe~.,data=train, method="rpart")
+modelDecisionTrees
+
+#Generalized boosted regression
+control<-trainControl(number=5)
+modelGBM<-train(classe~.,data=train, method="gbm", trControl=control)
+modelGBM
+
+#Random forests
+control<-trainControl(number=5)
+modelRandomForests<-train(classe~.,data=train, method="rf", trControl=control)
+modelRandomForests
+```
+
+#Model Testing
+
+Let us test the trained models with the testing data.
+
+```{r}
+#Decision tree
+predictDecisionTrees<-predict(modelDecisionTrees, test)
+confusionMatrix(predictDecisionTrees, test$classe)
+
+#Test the generalized boosted regression model
+predictGBM<-predict(modelGBM,test)
+confusionMatrix(predictGBM, test$classe)
+
+#Test the random forests model
+predictRandomForest<-predict(modelRandomForests,test)
+confusionMatrix(predictRandomForest, test$classe)
+```
+It can be seen from the above results that Random Forests performed the best with an accuracy of 0.99, while decision trees performed the worst.
+
+Hence we will choose Random Forests as our model.
+
+#Model Validation
+
+Let us now validate of results with the validation set.
+```{r}
+validation<-predict(modelRandomForests, validate)
+validation
+```
+
+We can see that the validation yields satisfactory results.
